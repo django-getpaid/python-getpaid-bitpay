@@ -86,9 +86,8 @@ class TestSigningEquivalence:
         SDK: binascii.hexlify(vk.to_string()) -> compress_key(bts)
         where compress_key checks int(full_hex, 16) % 2 for prefix.
         """
-        from bitpay.utils.key_utils import (
-            get_compressed_public_key_from_pem as sdk_get_pubkey,
-        )
+        sdk_keys = pytest.importorskip("bitpay.utils.key_utils")
+        sdk_get_pubkey = sdk_keys.get_compressed_public_key_from_pem
 
         ours = get_compressed_public_key(pem_key)
         theirs = sdk_get_pubkey(pem_key)
@@ -101,7 +100,8 @@ class TestSigningEquivalence:
         Instead we verify both signatures are valid SHA-256 signatures
         for the same message and key.
         """
-        from bitpay.utils.key_utils import sign as sdk_sign
+        sdk_keys = pytest.importorskip("bitpay.utils.key_utils")
+        sdk_sign = sdk_keys.sign
 
         message = 'https://test.bitpay.com/invoices{"token":"abc"}'
         ours = sign(message, pem_key)
