@@ -50,6 +50,7 @@ This plugin uses its own native async HTTP client instead of wrapping the
 - Invoice creation via POS facade (token-only authentication)
 - Invoice retrieval, cancellation via merchant facade (EC key signing)
 - Refund creation, retrieval, cancellation via merchant facade
+- Callback authenticity verification via `X-Signature` HMAC
 - IPN webhook handling for both invoice and refund status changes
 - PULL status polling via `fetch_payment_status`
 - Two-step payment confirmation (confirm_payment + mark_as_paid)

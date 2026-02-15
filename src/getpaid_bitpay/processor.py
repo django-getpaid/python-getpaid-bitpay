@@ -1,10 +1,13 @@
 """BitPay payment processor."""
 
 import contextlib
+import hashlib
+import hmac
 import logging
 from decimal import Decimal
 from typing import ClassVar
 
+from getpaid_core.exceptions import InvalidCallbackError
 from getpaid_core.processor import BaseProcessor
 from getpaid_core.types import PaymentStatusResponse
 from getpaid_core.types import TransactionResult
@@ -89,6 +92,39 @@ class BitPayProcessor(BaseProcessor):
             headers={},
         )
 
+    async def verify_callback(
+        self, data: dict, headers: dict, **kwargs
+    ) -> None:
+        """Verify BitPay callback authenticity."""
+        raw_body = kwargs.get("raw_body")
+        if raw_body is None:
+            raise InvalidCallbackError(
+                "Missing raw_body in callback kwargs."
+            )
+        if isinstance(raw_body, str):
+            raw_body = raw_body.encode("utf-8")
+        if not isinstance(raw_body, (bytes, bytearray)):
+            raise InvalidCallbackError(
+                "raw_body must be bytes or str."
+            )
+
+        signature = ""
+        for key, value in headers.items():
+            if key.lower() == "x-signature":
+                signature = value
+                break
+        if not signature:
+            raise InvalidCallbackError("NO SIGNATURE")
+
+        secret = self.get_setting("pos_token", "")
+        expected = hmac.new(
+            secret.encode("utf-8"),
+            bytes(raw_body),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature.lower()):
+            raise InvalidCallbackError("BAD SIGNATURE")
+
     async def handle_callback(
         self, data: dict, headers: dict, **kwargs
     ) -> None:
@@ -111,6 +147,8 @@ class BitPayProcessor(BaseProcessor):
             status = InvoiceStatus(status_str)
         except ValueError:
             logger.warning("Unknown BitPay invoice status: %s", status_str)
+            if self.payment.may_trigger("fail"):
+                self.payment.fail()
             return
 
         trigger = INVOICE_STATUS_MAP.get(status)

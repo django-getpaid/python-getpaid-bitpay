@@ -1,15 +1,19 @@
 """Tests for BitPay payment processor."""
 
+import hashlib
+import hmac
 import json
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import httpx
+import pytest
 import respx
 
 from getpaid_bitpay.processor import BitPayProcessor
 from getpaid_bitpay.signing import generate_pem
 from getpaid_bitpay.types import ACCEPTED_CURRENCIES
+from getpaid_core.exceptions import InvalidCallbackError
 
 
 BITPAY_TEST_URL = "https://test.bitpay.com"
@@ -193,7 +197,7 @@ class TestHandleCallback:
     async def test_invalid_status_triggers_fail(self):
         payment = make_payment()
         await self._make_processor_and_handle(
-            payment, {"id": "inv1", "status": "invalid"}
+            payment, {"id": "inv1", "status": "mystery_status"}
         )
         payment.fail.assert_called_once()
 
@@ -230,6 +234,57 @@ class TestHandleCallbackRefund:
             event_type="refund",
         )
         payment.cancel_refund.assert_called_once()
+
+
+class TestVerifyCallback:
+    async def test_valid_signature(self):
+        payment = make_payment()
+        config = make_config()
+        processor = BitPayProcessor(payment, config)
+        raw_body = json.dumps({"id": "inv1", "status": "paid"})
+        signature = hmac.new(
+            config["pos_token"].encode("utf-8"),
+            raw_body.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+        await processor.verify_callback(
+            data={},
+            headers={"X-Signature": signature},
+            raw_body=raw_body,
+        )
+
+    async def test_missing_signature_raises(self):
+        payment = make_payment()
+        config = make_config()
+        processor = BitPayProcessor(payment, config)
+        with pytest.raises(InvalidCallbackError, match="NO SIGNATURE"):
+            await processor.verify_callback(
+                data={},
+                headers={},
+                raw_body=b'{"id":"inv1"}',
+            )
+
+    async def test_missing_raw_body_raises(self):
+        payment = make_payment()
+        config = make_config()
+        processor = BitPayProcessor(payment, config)
+        with pytest.raises(InvalidCallbackError, match="raw_body"):
+            await processor.verify_callback(
+                data={},
+                headers={"x-signature": "abc"},
+            )
+
+    async def test_bad_signature_raises(self):
+        payment = make_payment()
+        config = make_config()
+        processor = BitPayProcessor(payment, config)
+        with pytest.raises(InvalidCallbackError, match="BAD SIGNATURE"):
+            await processor.verify_callback(
+                data={},
+                headers={"x-signature": "bad"},
+                raw_body=b'{"id":"inv1"}',
+            )
 
 
 class TestFetchPaymentStatus:
