@@ -9,11 +9,11 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 import respx
+from getpaid_core.exceptions import InvalidCallbackError
 
 from getpaid_bitpay.processor import BitPayProcessor
 from getpaid_bitpay.signing import generate_pem
 from getpaid_bitpay.types import ACCEPTED_CURRENCIES
-from getpaid_core.exceptions import InvalidCallbackError
 
 
 BITPAY_TEST_URL = "https://test.bitpay.com"
