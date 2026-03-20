@@ -1,17 +1,17 @@
 """BitPay payment processor."""
 
-import contextlib
 import hashlib
 import hmac
 import logging
 from decimal import Decimal
 from typing import ClassVar
 
+from getpaid_core.enums import PaymentEvent
 from getpaid_core.exceptions import InvalidCallbackError
 from getpaid_core.processor import BaseProcessor
-from getpaid_core.types import PaymentStatusResponse
+from getpaid_core.types import PaymentUpdate
+from getpaid_core.types import RefundResult
 from getpaid_core.types import TransactionResult
-from transitions.core import MachineError
 
 from .client import BitPayClient
 from .types import ACCEPTED_CURRENCIES
@@ -83,13 +83,13 @@ class BitPayProcessor(BaseProcessor):
             item_desc=self.payment.description,
         )
 
-        self.payment.external_id = invoice.get("id", "")
-
         return TransactionResult(
             redirect_url=invoice.get("url"),
             form_data=None,
             method="GET",
             headers={},
+            external_id=invoice.get("id") or None,
+            provider_data={"invoice_status": invoice.get("status", "")},
         )
 
     async def verify_callback(
@@ -98,15 +98,11 @@ class BitPayProcessor(BaseProcessor):
         """Verify BitPay callback authenticity."""
         raw_body = kwargs.get("raw_body")
         if raw_body is None:
-            raise InvalidCallbackError(
-                "Missing raw_body in callback kwargs."
-            )
+            raise InvalidCallbackError("Missing raw_body in callback kwargs.")
         if isinstance(raw_body, str):
             raw_body = raw_body.encode("utf-8")
-        if not isinstance(raw_body, (bytes, bytearray)):
-            raise InvalidCallbackError(
-                "raw_body must be bytes or str."
-            )
+        if not isinstance(raw_body, bytes | bytearray):
+            raise InvalidCallbackError("raw_body must be bytes or str.")
 
         signature = ""
         for key, value in headers.items():
@@ -127,7 +123,7 @@ class BitPayProcessor(BaseProcessor):
 
     async def handle_callback(
         self, data: dict, headers: dict, **kwargs
-    ) -> None:
+    ) -> PaymentUpdate:
         """Handle BitPay IPN webhook (invoice or refund event).
 
         Dispatches based on ``event_type`` kwarg or infers from
@@ -137,68 +133,83 @@ class BitPayProcessor(BaseProcessor):
         status_str = data.get("status", "")
 
         if event_type == "refund":
-            self._handle_refund_callback(status_str, data)
-        else:
-            self._handle_invoice_callback(status_str, data)
+            return self._handle_refund_callback(status_str, data)
+        return self._handle_invoice_callback(status_str, data)
 
-    def _handle_invoice_callback(self, status_str: str, data: dict) -> None:
+    def _handle_invoice_callback(
+        self, status_str: str, data: dict
+    ) -> PaymentUpdate:
         """Process invoice status change from webhook."""
+        invoice_id = data.get("id") or self.payment.external_id
+        provider_event_id = (
+            f"invoice:{invoice_id}:{status_str}" if invoice_id else None
+        )
+        provider_data = {"invoice_status": status_str}
         try:
             status = InvoiceStatus(status_str)
         except ValueError:
             logger.warning("Unknown BitPay invoice status: %s", status_str)
-            if self.payment.may_trigger("fail"):
-                self.payment.fail()
-            return
-
-        trigger = INVOICE_STATUS_MAP.get(status)
-        if trigger is None:
-            logger.debug("No FSM trigger for BitPay status %s", status_str)
-            return
-
-        if not self.payment.may_trigger(trigger):
-            logger.debug(
-                "Cannot trigger %s for payment %s (status=%s)",
-                trigger,
-                self.payment.id,
-                self.payment.status,
+            return PaymentUpdate(
+                payment_event=PaymentEvent.FAILED,
+                external_id=invoice_id,
+                provider_event_id=provider_event_id,
+                provider_data=provider_data,
             )
-            return
 
-        getattr(self.payment, trigger)()
+        payment_event = INVOICE_STATUS_MAP.get(status)
+        paid_amount = None
+        if payment_event is PaymentEvent.PAYMENT_CAPTURED:
+            paid_amount = _extract_decimal_amount(
+                data,
+                "amount_paid",
+                "amountPaid",
+                "price",
+            )
+            if paid_amount is None:
+                paid_amount = self.payment.amount_required
 
-        # After confirm_payment, try to mark_as_paid
-        if trigger == "confirm_payment":
-            with contextlib.suppress(MachineError):
-                if self.payment.may_trigger("mark_as_paid"):
-                    self.payment.mark_as_paid()
+        return PaymentUpdate(
+            payment_event=payment_event,
+            paid_amount=paid_amount,
+            external_id=invoice_id,
+            provider_event_id=provider_event_id,
+            provider_data=provider_data,
+        )
 
-    def _handle_refund_callback(self, status_str: str, data: dict) -> None:
+    def _handle_refund_callback(
+        self, status_str: str, data: dict
+    ) -> PaymentUpdate:
         """Process refund status change from webhook."""
+        refund_id = data.get("id")
+        provider_event_id = (
+            f"refund:{refund_id}:{status_str}" if refund_id else None
+        )
+        provider_data = {"refund_status": status_str}
+        if refund_id:
+            provider_data["refund_id"] = refund_id
+
         try:
             status = RefundStatus(status_str)
         except ValueError:
             logger.warning("Unknown BitPay refund status: %s", status_str)
-            return
+            return PaymentUpdate(
+                provider_event_id=provider_event_id,
+                provider_data=provider_data,
+            )
 
-        trigger = REFUND_STATUS_MAP.get(status)
-        if trigger is None:
-            logger.debug("No FSM trigger for refund status %s", status_str)
-            return
+        payment_event = REFUND_STATUS_MAP.get(status)
+        refunded_amount = None
+        if payment_event is PaymentEvent.REFUND_CONFIRMED:
+            refunded_amount = _extract_decimal_amount(data, "amount")
 
-        if not self.payment.may_trigger(trigger):
-            return
+        return PaymentUpdate(
+            payment_event=payment_event,
+            refunded_amount=refunded_amount,
+            provider_event_id=provider_event_id,
+            provider_data=provider_data,
+        )
 
-        if trigger == "confirm_refund":
-            amount = Decimal(str(data.get("amount", 0)))
-            self.payment.confirm_refund(amount=amount)
-            with contextlib.suppress(MachineError):
-                if self.payment.may_trigger("mark_as_refunded"):
-                    self.payment.mark_as_refunded()
-        else:
-            getattr(self.payment, trigger)()
-
-    async def fetch_payment_status(self, **kwargs) -> PaymentStatusResponse:
+    async def fetch_payment_status(self, **kwargs) -> PaymentUpdate:
         """PULL flow: fetch invoice status from BitPay API.
 
         Requires merchant facade configuration.
@@ -207,20 +218,38 @@ class BitPayProcessor(BaseProcessor):
         invoice = await client.get_invoice(self.payment.external_id)
 
         status_str = invoice.get("status", "")
+        invoice_id = invoice.get("id") or self.payment.external_id
+        provider_data = {"invoice_status": status_str}
         try:
             status = InvoiceStatus(status_str)
-            trigger = INVOICE_STATUS_MAP.get(status)
+            payment_event = INVOICE_STATUS_MAP.get(status)
         except ValueError:
-            trigger = None
+            payment_event = PaymentEvent.FAILED
 
-        return PaymentStatusResponse(
-            status=trigger,
-            external_id=invoice.get("id"),
+        paid_amount = None
+        if payment_event is PaymentEvent.PAYMENT_CAPTURED:
+            paid_amount = _extract_decimal_amount(
+                invoice,
+                "amount_paid",
+                "amountPaid",
+                "price",
+            )
+            if paid_amount is None:
+                paid_amount = self.payment.amount_required
+
+        return PaymentUpdate(
+            payment_event=payment_event,
+            paid_amount=paid_amount,
+            external_id=invoice_id,
+            provider_event_id=(
+                f"poll:{invoice_id}:{status_str}" if invoice_id else None
+            ),
+            provider_data=provider_data,
         )
 
     async def start_refund(
         self, amount: Decimal | None = None, **kwargs
-    ) -> Decimal:
+    ) -> RefundResult:
         """Start a refund via BitPay API.
 
         Requires merchant facade configuration.
@@ -228,9 +257,43 @@ class BitPayProcessor(BaseProcessor):
         client = self._get_client()
         refund_amount = amount or self.payment.amount_paid
 
-        await client.create_refund(
+        refund = await client.create_refund(
             invoice_id=self.payment.external_id,
             amount=float(refund_amount),
         )
 
-        return refund_amount
+        provider_data = {"refund_status": refund.get("status", "")}
+        refund_id = refund.get("id")
+        if refund_id:
+            provider_data["refund_id"] = refund_id
+        return RefundResult(amount=refund_amount, provider_data=provider_data)
+
+    async def charge(self, amount: Decimal | None = None, **kwargs):
+        """BitPay does not support delayed capture."""
+        raise NotImplementedError(
+            "BitPay does not support pre-authorization/charge flow"
+        )
+
+    async def release_lock(self, **kwargs) -> Decimal:
+        """BitPay does not support releasing a payment lock."""
+        raise NotImplementedError(
+            "BitPay does not support pre-authorization/release flow"
+        )
+
+    async def cancel_refund(self, **kwargs) -> bool:
+        """Cancel an in-progress refund using the merchant API."""
+        client = self._get_client()
+        refund_id = self.payment.provider_data.get("refund_id")
+        if not refund_id:
+            raise InvalidCallbackError("Missing refund identifier")
+        await client.cancel_refund(refund_id)
+        return True
+
+
+def _extract_decimal_amount(data: dict, *keys: str) -> Decimal | None:
+    for key in keys:
+        value = data.get(key)
+        if value in (None, ""):
+            continue
+        return Decimal(str(value))
+    return None

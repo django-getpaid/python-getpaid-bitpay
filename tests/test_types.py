@@ -1,4 +1,6 @@
-"""Tests for BitPay type definitions and status mappings."""
+"""Tests for BitPay status mappings."""
+
+from getpaid_core.enums import PaymentEvent
 
 from getpaid_bitpay.types import INVOICE_STATUS_MAP
 from getpaid_bitpay.types import REFUND_STATUS_MAP
@@ -17,10 +19,9 @@ class TestInvoiceStatus:
             "invalid",
             "declined",
         }
-        assert {s.value for s in InvoiceStatus} == expected
+        assert {status.value for status in InvoiceStatus} == expected
 
     def test_status_map_covers_all(self):
-        """Every InvoiceStatus has a mapping entry."""
         for status in InvoiceStatus:
             assert status in INVOICE_STATUS_MAP
 
@@ -35,35 +36,40 @@ class TestRefundStatus:
             "failure",
             "cancelled",
         }
-        assert {s.value for s in RefundStatus} == expected
+        assert {status.value for status in RefundStatus} == expected
 
     def test_status_map_covers_all(self):
-        """Every RefundStatus has a mapping entry."""
         for status in RefundStatus:
             assert status in REFUND_STATUS_MAP
 
 
 class TestInvoiceStatusMapping:
-    def test_new_maps_to_confirm_prepared(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.NEW] == "confirm_prepared"
+    def test_new_maps_to_prepared(self):
+        assert INVOICE_STATUS_MAP[InvoiceStatus.NEW] is PaymentEvent.PREPARED
 
-    def test_paid_maps_to_confirm_payment(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.PAID] == "confirm_payment"
+    def test_paid_maps_to_payment_captured(self):
+        assert (
+            INVOICE_STATUS_MAP[InvoiceStatus.PAID]
+            is PaymentEvent.PAYMENT_CAPTURED
+        )
 
-    def test_confirmed_maps_to_mark_as_paid(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.CONFIRMED] == "mark_as_paid"
+    def test_confirmed_maps_to_payment_captured(self):
+        assert (
+            INVOICE_STATUS_MAP[InvoiceStatus.CONFIRMED]
+            is PaymentEvent.PAYMENT_CAPTURED
+        )
 
     def test_complete_maps_to_none(self):
         assert INVOICE_STATUS_MAP[InvoiceStatus.COMPLETE] is None
 
-    def test_expired_maps_to_fail(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.EXPIRED] == "fail"
+    def test_expired_maps_to_failed(self):
+        assert INVOICE_STATUS_MAP[InvoiceStatus.EXPIRED] is PaymentEvent.FAILED
 
-    def test_invalid_maps_to_fail(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.INVALID] == "fail"
+    def test_invalid_maps_to_failed(self):
+        assert INVOICE_STATUS_MAP[InvoiceStatus.INVALID] is PaymentEvent.FAILED
 
-    def test_declined_maps_to_fail(self):
-        assert INVOICE_STATUS_MAP[InvoiceStatus.DECLINED] == "fail"
+    def test_declined_maps_to_failed(self):
+        assert INVOICE_STATUS_MAP[InvoiceStatus.DECLINED] is PaymentEvent.FAILED
 
 
 class TestRefundStatusMapping:
@@ -76,11 +82,20 @@ class TestRefundStatusMapping:
     def test_preview_maps_to_none(self):
         assert REFUND_STATUS_MAP[RefundStatus.PREVIEW] is None
 
-    def test_success_maps_to_confirm_refund(self):
-        assert REFUND_STATUS_MAP[RefundStatus.SUCCESS] == "confirm_refund"
+    def test_success_maps_to_refund_confirmed(self):
+        assert (
+            REFUND_STATUS_MAP[RefundStatus.SUCCESS]
+            is PaymentEvent.REFUND_CONFIRMED
+        )
 
-    def test_failure_maps_to_cancel_refund(self):
-        assert REFUND_STATUS_MAP[RefundStatus.FAILURE] == "cancel_refund"
+    def test_failure_maps_to_refund_cancelled(self):
+        assert (
+            REFUND_STATUS_MAP[RefundStatus.FAILURE]
+            is PaymentEvent.REFUND_CANCELLED
+        )
 
-    def test_cancelled_maps_to_cancel_refund(self):
-        assert REFUND_STATUS_MAP[RefundStatus.CANCELLED] == "cancel_refund"
+    def test_cancelled_maps_to_refund_cancelled(self):
+        assert (
+            REFUND_STATUS_MAP[RefundStatus.CANCELLED]
+            is PaymentEvent.REFUND_CANCELLED
+        )

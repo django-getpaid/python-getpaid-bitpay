@@ -614,7 +614,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.0" },
     { name = "ecdsa", specifier = ">=0.19.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "python-getpaid-core", specifier = ">=0.1.0" },
+    { name = "python-getpaid-core", specifier = ">=3.0.0a2" },
 ]
 
 [package.metadata.requires-dev]
@@ -635,16 +635,16 @@ docs = [
 
 [[package]]
 name = "python-getpaid-core"
-version = "0.1.0"
+version = "3.0.0a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "transitions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/24/1b640b2b8f4b96534316f25ff4b68c692bd704fb4dd802306dd1de32419a/python_getpaid_core-0.1.0.tar.gz", hash = "sha256:80d58dd584e1e52ab3e6d25e71bc02b85ebb4914d0bb804ac382e7365eefa72d", size = 106804, upload-time = "2026-02-13T19:58:58.65Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/39/6b161535961831698ee62b1af87d0e8730032b9fe082fe9714bc704dbb6d/python_getpaid_core-3.0.0a2.tar.gz", hash = "sha256:85707a7d9df8deca935fddd90fad8f7d4b53c54183d113286138d54bfa8bbd43", size = 93214, upload-time = "2026-02-24T15:43:58.852Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/49/0d8d95c630ca03f31b50ce37ec2a9f56b166fbb641a1bbfb0816aa6cea9f/python_getpaid_core-0.1.0-py3-none-any.whl", hash = "sha256:22ef7adda468591dab23982d0fe9082bb1e7554813254df44c8e49eb1dfd9231", size = 13223, upload-time = "2026-02-13T19:58:59.915Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/2a/00fb5a8a3300c68971f52935837bf230d88a0221c4061f596182afd2f9ec/python_getpaid_core-3.0.0a2-py3-none-any.whl", hash = "sha256:b00894efe82102dc8241f2db05668772099c100baccd61de955110c728113f06", size = 13971, upload-time = "2026-02-24T15:43:59.703Z" },
 ]
 
 [[package]]

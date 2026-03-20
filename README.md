@@ -88,12 +88,12 @@ Supports over 200 global currencies including USD, EUR, GBP, PLN, JPY, CAD, AUD,
 
 ## Status Mapping
 
-| BitPay Status | FSM Trigger | Description |
-|---------------|-------------|-------------|
-| `new` | `confirm_prepared` | Invoice created, awaiting payment |
-| `paid` | `confirm_payment` | Payment detected, awaiting confirmation |
-| `confirmed` | `mark_as_paid` | Payment confirmed on blockchain |
-| `expired` / `invalid` / `declined` | `fail` | Payment failed or expired |
+| BitPay Status | Semantic Event | Description |
+|---------------|----------------|-------------|
+| `new` | `prepared` | Invoice created, awaiting payment |
+| `paid` | `payment_captured` | Payment detected, awaiting confirmation |
+| `confirmed` | `payment_captured` | Payment confirmed on blockchain |
+| `expired` / `invalid` / `declined` | `failed` | Payment failed or expired |
 
 ## Links
 

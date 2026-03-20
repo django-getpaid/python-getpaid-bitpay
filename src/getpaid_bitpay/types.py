@@ -3,6 +3,8 @@
 from enum import StrEnum
 from typing import TypedDict
 
+from getpaid_core.enums import PaymentEvent
+
 
 class InvoiceStatus(StrEnum):
     """BitPay invoice statuses."""
@@ -27,25 +29,25 @@ class RefundStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-# Maps BitPay invoice status → getpaid FSM trigger name (or None).
-INVOICE_STATUS_MAP: dict[InvoiceStatus, str | None] = {
-    InvoiceStatus.NEW: "confirm_prepared",
-    InvoiceStatus.PAID: "confirm_payment",
-    InvoiceStatus.CONFIRMED: "mark_as_paid",
+# Maps BitPay invoice status to semantic payment events.
+INVOICE_STATUS_MAP: dict[InvoiceStatus, PaymentEvent | None] = {
+    InvoiceStatus.NEW: PaymentEvent.PREPARED,
+    InvoiceStatus.PAID: PaymentEvent.PAYMENT_CAPTURED,
+    InvoiceStatus.CONFIRMED: PaymentEvent.PAYMENT_CAPTURED,
     InvoiceStatus.COMPLETE: None,
-    InvoiceStatus.EXPIRED: "fail",
-    InvoiceStatus.INVALID: "fail",
-    InvoiceStatus.DECLINED: "fail",
+    InvoiceStatus.EXPIRED: PaymentEvent.FAILED,
+    InvoiceStatus.INVALID: PaymentEvent.FAILED,
+    InvoiceStatus.DECLINED: PaymentEvent.FAILED,
 }
 
-# Maps BitPay refund status → getpaid FSM trigger name (or None).
-REFUND_STATUS_MAP: dict[RefundStatus, str | None] = {
+# Maps BitPay refund status to semantic payment events.
+REFUND_STATUS_MAP: dict[RefundStatus, PaymentEvent | None] = {
     RefundStatus.PENDING: None,
     RefundStatus.CREATED: None,
     RefundStatus.PREVIEW: None,
-    RefundStatus.SUCCESS: "confirm_refund",
-    RefundStatus.FAILURE: "cancel_refund",
-    RefundStatus.CANCELLED: "cancel_refund",
+    RefundStatus.SUCCESS: PaymentEvent.REFUND_CONFIRMED,
+    RefundStatus.FAILURE: PaymentEvent.REFUND_CANCELLED,
+    RefundStatus.CANCELLED: PaymentEvent.REFUND_CANCELLED,
 }
 
 
